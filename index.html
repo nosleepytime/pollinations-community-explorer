@@ -14,17 +14,5 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
-    <script type="module">
-      import Lingo from "https://google-translate-free.vercel.app/lingo.mjs";
-      Lingo.configure({
-        siteLanguage: "en",
-        sourceLanguage: "auto",
-        targetLanguage: "device",
-        observe: true,
-        badge: true,
-        attributes: true
-      });
-      await Lingo.start();
-    </script>
   </body>
 </html>
