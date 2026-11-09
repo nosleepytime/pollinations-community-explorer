@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Search, RefreshCw, ChevronDown, ExternalLink, SlidersHorizontal, Sparkles, Eye, Video, BrainCircuit, Wrench, Globe2, Code2, AudioLines, Image as ImageIcon, Box, Clock3, Activity, Zap, X, Check, CircleHelp, ArrowUpRight, Layers3 } from "lucide-react";
+import { Search, RefreshCw, ChevronDown, ExternalLink, Copy, SlidersHorizontal, Sparkles, Eye, Video, BrainCircuit, Wrench, Globe2, Code2, AudioLines, Image as ImageIcon, Box, Clock3, Activity, Zap, X, Check, CircleHelp, ArrowUpRight, Layers3 } from "lucide-react";
 import "./styles.css";
 
 const API = "https://gen.pollinations.ai/models?source=community&reliability=all";
@@ -236,15 +236,33 @@ function ModelCard({model:m,onClick}) {
   const desc=str(get(m,"description","summary")) || "No description has been published for this model.";
   const health=status(m);
   const price=numericPrices(m);
-  return <button className="model-card" onClick={onClick}>
+  return <div className="model-card" role="button" tabIndex={0} onClick={onClick} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onClick();}}}>
     <div className="card-top"><span className="model-type"><span className="type-icon"><Layers3 size={13}/></span>{categoryLabel(category)}</span><span className={health==="healthy"||health==="operational"?"health healthy":"health"}><i/>{titleCase(health)}</span></div>
     <div className="model-name-row"><h3>{modelTitle(m)}</h3><ArrowUpRight size={16}/></div>
-    <div className="model-id">{modelId(m)}</div>
+    <div className="model-id-row"><code className="model-id">{modelId(m)}</code><CopyIdButton value={modelId(m)}/></div>
     <p className="model-description">{desc}</p>
     <div className="capability-tags">{groups.slice(0,3).map(([label,Icon])=><span key={label}><Icon size={12}/>{label}</span>)}{caps.length>0&&!groups.length&&caps.slice(0,2).map(c=><span key={c}><Sparkles size={12}/>{titleCase(c)}</span>)}{!groups.length&&!caps.length&&<span className="muted-tag">No capabilities listed</span>}</div>
     <div className="card-divider"/>
     <div className="card-stats"><div><span>REQUESTS / MIN</span><strong>{rpm(m)}</strong></div><div><span>PRICING</span><strong className={isFree(m)?"free-text":""}>{isFree(m)?"Free":price.length?"Paid / mixed":"Not published"}</strong></div><div><span>CONTEXT</span><strong>{get(m,"context_length","contextLength") ? Number(get(m,"context_length","contextLength")).toLocaleString() : "—"}</strong></div></div>
-  </button>;
+  </div>;
+}
+
+function CopyIdButton({value}) {
+  const [copied,setCopied]=useState(false);
+  const copy=async e=>{
+    e?.stopPropagation?.();
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(()=>setCopied(false),1600);
+    } catch {
+      const field=document.createElement("textarea");
+      field.value=value;document.body.appendChild(field);field.select();
+      const ok=document.execCommand("copy");field.remove();
+      if(ok){setCopied(true);window.setTimeout(()=>setCopied(false),1600);}
+    }
+  };
+  return <button type="button" className={copied?"copy-id-button copied":"copy-id-button"} onClick={copy} aria-label={copied?"Model ID copied":"Copy model ID"} title={copied?"Copied!":"Copy model ID"}>{copied?<Check size={14}/>:<Copy size={14}/>}<span>{copied?"Copied":"Copy ID"}</span></button>;
 }
 
 function ModelModal({model:m,onClose}) {
@@ -254,7 +272,7 @@ function ModelModal({model:m,onClose}) {
   ];
   useEffect(()=>{const fn=e=>{if(e.key==="Escape")onClose()};window.addEventListener("keydown",fn);return()=>window.removeEventListener("keydown",fn)},[onClose]);
   return <div className="modal-backdrop" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><section className="modal">
-    <div className="modal-head"><div><div className="section-kicker">MODEL DETAILS</div><h2>{modelTitle(m)}</h2><code>{modelId(m)}</code></div><button className="close-button" onClick={onClose}><X size={18}/></button></div>
+    <div className="modal-head"><div><div className="section-kicker">MODEL DETAILS</div><h2>{modelTitle(m)}</h2><div className="modal-id-row"><code>{modelId(m)}</code><CopyIdButton value={modelId(m)}/></div></div><button className="close-button" onClick={onClose}><X size={18}/></button></div>
     <p className="modal-description">{get(m,"description","summary")||"No description has been published."}</p>
     <div className="details-grid">{details.map(([k,v])=><div className="detail-cell" key={k}><span>{k}</span><strong>{String(v)}</strong></div>)}</div>
     <div className="modal-block"><h4>CAPABILITIES</h4><div className="modal-tags">{caps.length?caps.map(c=>{const Icon=iconForCapability(c);return <span key={c}><Icon size={14}/>{titleCase(c)}</span>}):<em>Not published</em>}</div></div>
