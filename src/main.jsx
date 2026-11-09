@@ -33,23 +33,27 @@ function modalityList(m) {
 }
 function numericPrices(m) {
   const found = [];
-  const walk = (obj, path = "") => {
+  const priceKey = /(price|pricing|cost|pollen)/i;
+  const walk = (obj) => {
     if (!obj || typeof obj !== "object") return;
-    for (const [k,v] of Object.entries(obj)) {
-      const p = path ? path + "." + k : k;
-      if (typeof v === "number" && /(price|cost|pollen|per_token|per_image|per_second|input|output|prompt|completion)/i.test(k)) found.push(v);
-      else if (v && typeof v === "object") walk(v,p);
+    for (const [key,value] of Object.entries(obj)) {
+      if (priceKey.test(key)) {
+        if (typeof value === "number") found.push(value);
+        else if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) found.push(Number(value));
+        else if (value && typeof value === "object") walk(value);
+      } else if (value && typeof value === "object") walk(value);
     }
   };
-  walk(get(m, "pricing", "prices", "price"));
-  for (const k of ["input_price","output_price","price_per_image","price_per_second","prompt_text_price","completion_text_price"]) if (typeof m?.[k] === "number") found.push(m[k]);
+  walk(m);
   return found;
 }
 function isFree(m) {
+  // Pollinations documents blank or zero public prices as free. paid_only is
+  // an independent restriction, so check it before examining every price field.
   if (get(m, "paid_only", "paidOnly") === true) return false;
-  if (get(m, "is_free", "free") === true) return true;
-  const p = numericPrices(m);
-  return p.length > 0 && p.every(n => n === 0);
+  if (get(m, "is_free", "isFree", "free") === true) return true;
+  const prices = numericPrices(m);
+  return prices.every(price => price === 0);
 }
 function rpm(m) {
   const n = get(m, "per_user_rpm", "perUserRpm", "rpm", "requests_per_minute");
@@ -103,6 +107,8 @@ function App() {
   const [showFilters,setShowFilters] = useState(false);
   const [selected,setSelected] = useState(null);
   const [changeLog,setChangeLog] = useState({added:[],removed:[],changed:[]});
+  const [secondsLeft,setSecondsLeft] = useState(20);
+  const nextRefreshAt = React.useRef(Date.now() + REFRESH_MS);
 
   const refresh = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true);
@@ -127,6 +133,8 @@ function App() {
     } catch (e) {
       setError(e?.message || "Unable to load the Pollinations catalog.");
     } finally {
+      nextRefreshAt.current = Date.now() + REFRESH_MS;
+      setSecondsLeft(20);
       setLoading(false);
       setRefreshing(false);
     }
@@ -134,8 +142,14 @@ function App() {
 
   useEffect(() => {
     refresh();
-    const id = window.setInterval(() => refresh(false), REFRESH_MS);
-    return () => window.clearInterval(id);
+    const refreshId = window.setInterval(() => refresh(false), REFRESH_MS);
+    const clockId = window.setInterval(() => {
+      setSecondsLeft(Math.max(0, Math.ceil((nextRefreshAt.current - Date.now()) / 1000)));
+    }, 200);
+    return () => {
+      window.clearInterval(refreshId);
+      window.clearInterval(clockId);
+    };
   }, [refresh]);
 
   const freeCount = useMemo(() => models.filter(isFree).length,[models]);
@@ -187,7 +201,7 @@ function App() {
         </div>
 
         {showFilters && <div className="filter-panel">
-          <label className="toggle-row"><span><strong>Free models only</strong><small>Only models with explicitly zero pricing</small></span><button role="switch" aria-checked={freeOnly} className={freeOnly?"switch on":"switch"} onClick={()=>setFreeOnly(v=>!v)}><span/></button></label>
+          <label className="toggle-row"><span><strong>Free models only</strong><small>Blank or zero public prices; paid-only models excluded</small></span><button role="switch" aria-checked={freeOnly} className={freeOnly?"switch on":"switch"} onClick={()=>setFreeOnly(v=>!v)}><span/></button></label>
           <label className="select-label">SORT BY<select value={sort} onChange={e=>setSort(e.target.value)}><option value="name">Model name</option><option value="rpm">Highest RPM first</option></select></label>
           <label className="select-label">CAPABILITY<select value={capFilter} onChange={e=>setCapFilter(e.target.value)}><option value="all">All capabilities</option>{["Vision capabilities","Video vision capabilities","Reasoning capabilities","Calling capabilities","Web search","Code execution","Audio capabilities"].map(x=><option key={x}>{x}</option>)}</select></label>
         </div>}
@@ -209,6 +223,10 @@ function App() {
     </main>
 
     <a className="floating-source" href="https://enter.pollinations.ai/models?q=source:community" target="_blank" rel="noreferrer"><span className="source-spark">✳</span> Models from Pollinations.ai <ExternalLink size={13}/></a>
+    <div className="refresh-countdown" aria-live="off" title="Time until the next automatic catalog refresh">
+      <span className="countdown-pulse"/><span className="countdown-number" key={secondsLeft}>{secondsLeft}</span><span className="countdown-unit">{secondsLeft === 1 ? "sec" : "secs"}</span>
+      <span className="countdown-label">UNTIL REFRESH</span>
+    </div>
     {selectedModel && <ModelModal model={selectedModel} onClose={()=>setSelected(null)}/>}
   </div>;
 }
