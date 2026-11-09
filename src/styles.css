@@ -8,3 +8,14 @@
 @keyframes countFlip{0%{opacity:.35;transform:translateY(-5px) scale(.88);filter:blur(2px)}65%{opacity:1;transform:translateY(1px) scale(1.05);filter:blur(0)}100%{transform:translateY(0) scale(1)}}
 @keyframes countPulse{0%,100%{opacity:.55;transform:scale(.8)}50%{opacity:1;transform:scale(1.25)}}
 @media(max-width:600px){.refresh-countdown{right:12px;bottom:12px;min-width:108px;padding:10px 12px 9px;border-radius:15px}.countdown-number{font-size:20px}.floating-source{bottom:12px;left:16px;transform:none}.floating-source:hover{transform:translateY(-2px)}}
+
+/* Copy model ID controls */
+.model-id-row{display:flex;align-items:center;gap:9px;min-width:0}
+.model-id-row .model-id{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.copy-id-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:0 0 auto;border:1px solid var(--line,rgba(255,255,255,.13));border-radius:9px;padding:6px 9px;background:rgba(255,255,255,.045);color:var(--muted,#a0a6b2);font:600 11px inherit;cursor:pointer;transition:all .18s ease}
+.copy-id-button:hover{border-color:#b9f36b80;color:#c5f77e;background:#b9f36b12}
+.copy-id-button.copied{border-color:#b9f36b80;color:#b9f36b;background:#b9f36b15}
+.model-card{cursor:pointer}
+.model-card:focus-visible{outline:2px solid #b9f36b;outline-offset:3px}
+.modal-id-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}
+.modal-id-row code{overflow-wrap:anywhere}
