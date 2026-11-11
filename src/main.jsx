@@ -1,286 +1,68 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { createRoot } from "react-dom/client";
-import { Search, RefreshCw, ChevronDown, ExternalLink, Copy, SlidersHorizontal, Sparkles, Eye, Video, BrainCircuit, Wrench, Globe2, Code2, AudioLines, Image as ImageIcon, Box, Clock3, Activity, Zap, X, Check, CircleHelp, ArrowUpRight, Layers3 } from "lucide-react";
-import "./styles.css";
-
-const API = "https://gen.pollinations.ai/models?source=community&reliability=all";
-const REFRESH_MS = 20_000;
-
-const get = (obj, ...keys) => {
-  for (const key of keys) if (obj?.[key] !== undefined && obj?.[key] !== null) return obj[key];
-  return undefined;
-};
-const str = (v) => typeof v === "string" ? v : v == null ? "" : String(v);
-const arr = (v) => Array.isArray(v) ? v : v ? [v] : [];
-const titleCase = (s) => str(s).replace(/[_-]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-
-function modelList(payload) {
-  if (Array.isArray(payload)) return payload;
-  for (const key of ["models", "data", "items", "results"]) if (Array.isArray(payload?.[key])) return payload[key];
-  return [];
+import React, {useState,useEffect,useCallback,useMemo,useRef} from 'react';
+import {createRoot} from 'react-dom/client';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faBrain,faEye,faVideo,faWandMagicSparkles,faVolumeHigh,faMicrophone,faCode,faBolt,faLayerGroup,faMagnifyingGlass,faArrowUpRightFromSquare,faArrowRotateRight,faCopy,faCheck,faCircleInfo,faSliders,faMoon,faSun,faBars,faXmark,faCloudArrowDown,faArrowRight,faCircleNodes,faWaveSquare,faDatabase,faList,faCircleCheck,faQuestion,faCircleExclamation,faFilter,faChevronDown,faCirclePlay,faPlug,faDownload,faSignal,faClock,faArrowUp,faStar,faHashtag} from '@fortawesome/free-solid-svg-icons';
+import './styles.css';
+const CATEGORIES=[{id:'all',label:'All Models',icon:faLayerGroup},{id:'text',label:'Text & Reasoning',icon:faBrain},{id:'image',label:'Image Generation',icon:faWandMagicSparkles},{id:'video',label:'Video Generation',icon:faVideo},{id:'audio',label:'Audio',icon:faVolumeHigh},{id:'embeddings',label:'Embeddings',icon:faDatabase},{id:'realtime',label:'Realtime',icon:faWaveSquare},{id:'3d',label:'3D',icon:faCircleNodes}];
+const CAPABILITIES=[{id:'vision',label:'Vision',icon:faEye},{id:'video-vision',label:'Video Vision',icon:faVideo},{id:'reasoning',label:'Reasoning',icon:faBrain},{id:'tool-calling',label:'Tool Calling',icon:faCode},{id:'streaming',label:'Streaming',icon:faBolt},{id:'image-generation',label:'Image Gen',icon:faWandMagicSparkles},{id:'audio-input',label:'Audio Input',icon:faMicrophone},{id:'audio-output',label:'Audio Output',icon:faVolumeHigh},{id:'embeddings',label:'Embeddings',icon:faDatabase}];
+const capIcon=id=>CAPABILITIES.find(c=>c.id===id)?.icon||faBolt;
+const capLabel=id=>CAPABILITIES.find(c=>c.id===id)?.label||id.replace(/[-_]/g,' ').replace(/\b\w/g,s=>s.toUpperCase());
+function App(){
+ const [theme,setTheme]=useState(()=>localStorage.getItem('atlas-theme')||'dark');
+ const [category,setCategory]=useState('all'); const [capability,setCapability]=useState('all');const [query,setQuery]=useState('');const [debouncedQuery,setDebouncedQuery]=useState('');const [freeOnly,setFreeOnly]=useState(true);const [source,setSource]=useState('community');const [status,setStatus]=useState('all');const [sort,setSort]=useState('name');const [models,setModels]=useState([]);const [meta,setMeta]=useState(null);const [loading,setLoading]=useState(true);const [error,setError]=useState('');const [copied,setCopied]=useState('');const [selected,setSelected]=useState(null);const [sidebar,setSidebar]=useState(false);const [showFilters,setShowFilters]=useState(false);const [timer,setTimer]=useState(20);const [refreshing,setRefreshing]=useState(false);const [view,setView]=useState('grid');const [installPrompt,setInstallPrompt]=useState(null);const [activity,setActivity]=useState(null);const [apiPanel,setApiPanel]=useState(false);const abortRef=useRef(null);const refreshRef=useRef(0);const previousIds=useRef(null);
+ useEffect(()=>{document.documentElement.dataset.theme=theme;localStorage.setItem('atlas-theme',theme)},[theme]);
+ useEffect(()=>{let t=setTimeout(()=>setDebouncedQuery(query),250);return()=>clearTimeout(t)},[query]);
+ useEffect(()=>{if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});const onInstall=e=>{e.preventDefault();setInstallPrompt(e)};window.addEventListener('beforeinstallprompt',onInstall);return()=>window.removeEventListener('beforeinstallprompt',onInstall)},[]);
+ const refresh=useCallback(async(manual=false)=>{
+  abortRef.current?.abort();const controller=new AbortController();abortRef.current=controller;
+  setRefreshing(true);setError('');
+  const p=new URLSearchParams({source,freeOnly:String(freeOnly),category,sort,includeRaw:'true',limit:'1000'});
+  if(capability!=='all')p.set('capability',capability);if(status!=='all')p.set('status',status);if(debouncedQuery)p.set('q',debouncedQuery);if(manual)p.set('refresh','true');
+  try{
+   const r=await fetch('/api/models?'+p.toString(),{signal:controller.signal,cache:'no-store'}); const d=await r.json();if(!r.ok)throw new Error(d.details||d.error||'API unavailable');
+   if(controller.signal.aborted)return;
+   setModels(d.data||[]);setMeta(d);setLoading(false);
+   if(previousIds.current && !debouncedQuery && category==='all' && capability==='all') {
+    const now=new Set((d.data||[]).map(m=>m.id));const added=[...now].filter(id=>!previousIds.current.has(id));const removed=[...previousIds.current].filter(id=>!now.has(id));if(added.length||removed.length)setActivity({added:added.length,removed:removed.length});
+   }
+   if(!debouncedQuery&&category==='all'&&capability==='all')previousIds.current=new Set((d.data||[]).map(m=>m.id));
+  }catch(e){if(e.name!=='AbortError'){setError(e.message);setLoading(false)}}finally{if(!controller.signal.aborted){setRefreshing(false);setTimer(20);refreshRef.current=Date.now()}};
+ },[source,freeOnly,category,sort,capability,status,debouncedQuery]);
+ useEffect(()=>{refresh();return()=>abortRef.current?.abort()},[refresh]);
+ useEffect(()=>{const tick=setInterval(()=>{const elapsed=Math.floor((Date.now()-refreshRef.current)/1000);if(refreshRef.current && elapsed>=20){refreshRef.current=Date.now();refresh();}else if(refreshRef.current)setTimer(Math.max(0,20-elapsed))},250);return()=>clearInterval(tick)},[refresh]);
+ const copy=async(text)=>{try{await navigator.clipboard.writeText(text)}catch{const input=document.createElement('textarea');input.value=text;document.body.appendChild(input);input.select();document.execCommand('copy');input.remove()}setCopied(text);setTimeout(()=>setCopied(s=>s===text?'':s),1700)};
+ const categoryTitle=CATEGORIES.find(c=>c.id===category)?.label||'All Models';
+ const apiExample=`${window.location.origin}/api/models?freeOnly=${freeOnly}&category=${category}${capability!=='all'?'&capability='+capability:''}${debouncedQuery?'&q='+encodeURIComponent(debouncedQuery):''}`;
+ const clear=()=>{setCategory('all');setCapability('all');setStatus('all');setQuery('');setFreeOnly(true);setSource('community');setSort('name')};
+ const nav=(<><div className="side-label">EXPLORE</div>{CATEGORIES.map(c=><button key={c.id} className={'nav-link '+(category===c.id?'active':'')} onClick={()=>{setCategory(c.id);setSidebar(false)}}><FontAwesomeIcon icon={c.icon}/><span>{c.label}</span>{category===c.id&&<span className="nav-indicator"/>}</button>)}<div className="side-label features-label">QUICK FILTERS</div>{CAPABILITIES.slice(0,5).map(c=><button key={c.id} className={'nav-link '+(capability===c.id?'active':'')} onClick={()=>{setCapability(capability===c.id?'all':c.id);setSidebar(false)}}><FontAwesomeIcon icon={c.icon}/><span>{c.label}</span></button>)}</>);
+ return <div className="app"><div className="ambient a1"/><div className="ambient a2"/>
+  <header className="topbar"><div className="brand" onClick={clear} role="button" tabIndex={0}><div className="brand-icon"><FontAwesomeIcon icon={faCircleNodes}/></div><div className="brand-text">community<span>atlas</span><small>MODEL DISCOVERY</small></div></div><nav className="header-nav"><button className="header-nav-link selected" onClick={clear}>Explore</button><button className="header-nav-link" onClick={()=>setApiPanel(true)}>API Docs</button><a className="header-nav-link" target="_blank" rel="noopener noreferrer" href="https://pollinations.ai/">About <FontAwesomeIcon icon={faArrowUpRightFromSquare}/></a></nav><div className="header-right"><span className="live-mark"><i/>LIVE CATALOG</span><button className="circle-btn theme-btn" title="Toggle theme" onClick={()=>setTheme(theme==='dark'?'light':'dark')}><FontAwesomeIcon icon={theme==='dark'?faSun:faMoon}/></button><button className="refresh-main" onClick={()=>refresh(true)} disabled={refreshing}><FontAwesomeIcon className={refreshing?'rotating':''} icon={faArrowRotateRight}/><span>Manual Refresh</span></button><button className="circle-btn mobile-menu" onClick={()=>setSidebar(true)} aria-label="Open menu"><FontAwesomeIcon icon={faBars}/></button></div></header>
+  <aside className={'sidebar '+(sidebar?'open':'')}><div className="mobile-side-head"><b>Explore</b><button className="circle-btn" onClick={()=>setSidebar(false)}><FontAwesomeIcon icon={faXmark}/></button></div>{nav}<div className="side-bottom"><div className="side-info"><FontAwesomeIcon icon={faSignal}/><div>Always up to date<small>Syncs every 20 seconds</small></div></div><button onClick={()=>setApiPanel(true)} className="side-api"><FontAwesomeIcon icon={faCode}/> API documentation <FontAwesomeIcon icon={faArrowRight}/></button></div></aside>{sidebar&&<div className="sidebar-backdrop" onClick={()=>setSidebar(false)}/>}
+  <main className="main"><div className="hero"><div className="eyebrow"><span className="eyebrow-dot"/> THE OPEN MODEL DIRECTORY <span className="eyebrow-dash">—</span> POWERED BY POLLINATIONS</div><h1>Discover what <span>AI can do.</span></h1><p className="hero-desc">Every community model, one beautiful place. Explore capabilities, compare specifications and find your next favorite AI model.</p><div className="hero-meta"><span><FontAwesomeIcon icon={faCircleCheck}/> Community-powered</span><span><FontAwesomeIcon icon={faBolt}/> Live model intelligence</span><span><FontAwesomeIcon icon={faCode}/> Free public API</span></div></div>
+   <div className="stat-grid"><Stat label="DISCOVERED MODELS" value={meta?.summary?.total??(loading?'—':models.length)} icon={faCircleNodes}/><Stat label="CATEGORIES" value={Object.keys(meta?.summary?.categories||{}).length||'—'} icon={faLayerGroup}/><Stat label="FREE / UNPRICED" value={meta?`${(meta.summary.free.free||0)+(meta.summary.free.unknown||0)}`:'—'} icon={faBolt}/><Stat label="DATA SOURCE" value={source==='community'?'Community':source==='all'?'All sources':'Official'} icon={faSignal} smaller/></div>
+   <section className="model-section"><div className="section-heading"><div><div className="section-overline">MODEL EXPLORER</div><h2>{categoryTitle}<span className="count-bubble">{meta?.total??'—'}</span></h2><p>Find the perfect model for your next project.</p></div><div className="section-actions"><button className="secondary-btn" onClick={()=>setApiPanel(true)}><FontAwesomeIcon icon={faCode}/> API Endpoint</button>{installPrompt&&<button className="secondary-btn" onClick={async()=>{await installPrompt.prompt();setInstallPrompt(null)}}><FontAwesomeIcon icon={faDownload}/> Install app</button>}</div></div>
+   <div className="toolbar"><div className="search-field"><FontAwesomeIcon icon={faMagnifyingGlass}/><input type="search" placeholder="Search models, IDs, providers, capabilities..." value={query} onChange={e=>setQuery(e.target.value)}/>{query&&<button onClick={()=>setQuery('')} title="Clear search"><FontAwesomeIcon icon={faXmark}/></button>}<span className="shortcut">⌕</span></div><button className={'filter-button '+(showFilters?'pressed':'')} onClick={()=>setShowFilters(!showFilters)}><FontAwesomeIcon icon={faSliders}/> Filters <FontAwesomeIcon icon={faChevronDown}/></button><div className="view-toggle"><button title="Grid view" className={view==='grid'?'active':''} onClick={()=>setView('grid')}><FontAwesomeIcon icon={faLayerGroup}/></button><button title="List view" className={view==='list'?'active':''} onClick={()=>setView('list')}><FontAwesomeIcon icon={faList}/></button></div></div>
+   <div className="filter-row"><label className="switch-line"><button className={'pretty-switch '+(freeOnly?'on':'')} role="switch" aria-checked={freeOnly} onClick={()=>setFreeOnly(!freeOnly)}><span/></button><span>Free models only</span></label><div className="divider-vertical"/><span className="filter-label">Category</span><div className="chip-scroll">{CATEGORIES.slice(0,6).map(c=><button key={c.id} onClick={()=>setCategory(c.id)} className={'chip '+(category===c.id?'selected':'')}>{c.label}</button>)}</div></div>
+   {showFilters&&<div className="advanced"><div><label>CAPABILITY</label><select value={capability} onChange={e=>setCapability(e.target.value)}><option value="all">All capabilities</option>{CAPABILITIES.map(c=><option key={c.id} value={c.id}>{c.label}</option>)}</select></div><div><label>MODEL SOURCE</label><select value={source} onChange={e=>setSource(e.target.value)}><option value="community">Community only</option><option value="all">All models</option><option value="official">Official models</option></select></div><div><label>AVAILABILITY</label><select value={status} onChange={e=>setStatus(e.target.value)}><option value="all">Any health status</option><option value="healthy">Healthy</option><option value="degraded">Degraded</option><option value="unhealthy">Unhealthy</option><option value="unknown">Unknown</option></select></div><div><label>SORT MODELS</label><select value={sort} onChange={e=>setSort(e.target.value)}><option value="name">Name (A → Z)</option><option value="category">Category</option><option value="rpm">RPM (highest)</option><option value="health">Health score</option></select></div><button className="clear-filters" onClick={clear}>Reset filters</button></div>}
+   <div className="results-header"><div><span className="results-pulse"/> {loading?'Retrieving models...':`${meta?.total??models.length} models found`}{meta?.stale&&<span className="stale-msg">· Last saved catalog (upstream unavailable)</span>}</div><span>Updated {meta?.updatedAt?new Date(meta.updatedAt).toLocaleTimeString():'—'} <FontAwesomeIcon icon={faArrowRotateRight} className={refreshing?'rotating':''}/></span></div>
+   {error&&<div className="error-box"><FontAwesomeIcon icon={faCircleExclamation}/> {error} <button onClick={()=>refresh(true)}>Try again</button></div>}
+   {activity&&<div className="activity">Catalog changes: {activity.added} new model(s), {activity.removed} removed from this view. <button onClick={()=>setActivity(null)}>Dismiss</button></div>}
+   {loading?<div className="card-grid">{Array.from({length:6},(_,i)=><div className="skeleton card" key={i}/>)}</div>:models.length?<div className={view==='grid'?'card-grid':'card-list'}>{models.map(m=><ModelCard key={m.id} m={m} onDetails={()=>setSelected(m)} copied={copied} copy={copy}/>)}</div>:<div className="empty"><FontAwesomeIcon icon={faMagnifyingGlass}/><h3>No matching models</h3><p>Try another category or remove some filters.</p><button onClick={clear}>Clear filters</button></div>}
+   {!loading&&models.length>0&&meta?.hasMore&&<p className="page-note">Showing {models.length} of {meta.total}. Use the API's limit and offset parameters to retrieve more.</p>}
+   </section>
+   <div className="api-promo"><div className="promo-icon"><FontAwesomeIcon icon={faCode}/></div><div><h3>Built for developers, too.</h3><p>Our REST API gives you searchable model metadata in one simple GET request. No API key required.</p></div><button onClick={()=>setApiPanel(true)}>Explore API <FontAwesomeIcon icon={faArrowRight}/></button></div>
+   <footer><div className="footer-top"><div className="footer-brand"><span className="footer-brand-icon"><FontAwesomeIcon icon={faCircleNodes}/></span> community<span>atlas</span></div><div className="footer-links"><a href="https://github.com/nosleepytime/pollinations-community-explorer" target="_blank" rel="noreferrer">GitHub <FontAwesomeIcon icon={faArrowUpRightFromSquare}/></a><a href="https://pollinations.ai/" target="_blank" rel="noreferrer">Pollinations Official <FontAwesomeIcon icon={faArrowUpRightFromSquare}/></a></div></div><p>Independent community catalog. This website is not associated with or endorsed by Pollinations.ai. For more information, visit the <a href="https://pollinations.ai/" target="_blank" rel="noreferrer">Pollinations.ai Official Website</a>.</p><div className="footer-last"><span>© {new Date().getFullYear()} Community Atlas. All rights reserved. Protected by copyright.</span><span>Designed & made by <a href="https://guns.lol/nosleepytimee" target="_blank" rel="noreferrer">3fow <FontAwesomeIcon icon={faArrowUpRightFromSquare}/></a></span></div></footer>
+  </main>
+  <div className="floating-bar"><a className="source-float" href="https://enter.pollinations.ai/models?q=source:community" target="_blank" rel="noopener noreferrer"><span className="source-dot"/> Models from Pollinations.ai <FontAwesomeIcon icon={faArrowUpRightFromSquare}/></a><button className="timer-float" onClick={()=>refresh(true)} title="Click to refresh now"><span className="timer-track" style={{'--progress':`${timer/20*100}%`}}/><FontAwesomeIcon icon={faArrowRotateRight} className={refreshing?'rotating':''}/><span className="animated-num" key={timer}>{timer}</span> {timer===1?'sec':'secs'}</button></div>
+  {selected&&<div className="modal-scrim" onMouseDown={e=>{if(e.target===e.currentTarget)setSelected(null)}}><div className="modal" role="dialog" aria-modal="true" aria-label="Model details"><div className="modal-top"><span>MODEL INTELLIGENCE</span><button className="circle-btn" onClick={()=>setSelected(null)} aria-label="Close"><FontAwesomeIcon icon={faXmark}/></button></div><div className="modal-title"><div className="modal-icon"><FontAwesomeIcon icon={CATEGORIES.find(c=>c.id===selected.category)?.icon||faBrain}/></div><div><h2>{selected.name}</h2><p>{selected.publisher||'Community model'} · {selected.category}</p></div></div><p className="modal-desc">{selected.description||'No description was provided by the upstream catalog.'}</p><label className="field-label">MODEL ID</label><div className="id-copy"><code>{selected.id}</code><button onClick={()=>copy(selected.id)}><FontAwesomeIcon icon={copied===selected.id?faCheck:faCopy}/> {copied===selected.id?'Copied!':'Copy ID'}</button></div><div className="details-grid"><Info label="PRICE STATUS" value={selected.freeStatus==='free'?'Free':selected.freeStatus==='paid'?'Paid':'Not published'}/><Info label="HEALTH" value={selected.status}/><Info label="REQUESTS / MIN" value={selected.rpm??'Not published'}/><Info label="CONTEXT WINDOW" value={selected.contextWindow?.toLocaleString()||'Not published'}/><Info label="MAX OUTPUT" value={selected.maxOutputTokens?.toLocaleString()||'Not published'}/><Info label="SOURCE" value={selected.source}/></div><label className="field-label">CAPABILITIES</label><div className="modal-tags">{selected.capabilities.length?selected.capabilities.map(c=><span className="cap-tag" key={c}><FontAwesomeIcon icon={capIcon(c)}/>{capLabel(c)}</span>):<span className="muted">Not declared</span>}</div><label className="field-label">PUBLISHED ENDPOINTS</label><div className="endpoints">{selected.supportedEndpoints.length?selected.supportedEndpoints.map(s=><code key={s}>{s}</code>):<span className="muted">Not declared</span>}</div><label className="field-label">COMPLETE UPSTREAM METADATA <small>unmodified source fields</small></label><pre className="raw-json">{JSON.stringify(selected.raw,null,2)}</pre><button className="json-copy" onClick={()=>copy(JSON.stringify(selected.raw,null,2))}><FontAwesomeIcon icon={copied===JSON.stringify(selected.raw,null,2)?faCheck:faCopy}/> Copy full JSON</button></div></div>}
+  {apiPanel&&<div className="modal-scrim" onMouseDown={e=>{if(e.target===e.currentTarget)setApiPanel(false)}}><div className="modal api-modal" role="dialog" aria-modal="true" aria-label="API documentation"><div className="modal-top"><span>DEVELOPER REFERENCE</span><button className="circle-btn" onClick={()=>setApiPanel(false)}><FontAwesomeIcon icon={faXmark}/></button></div><div className="api-heading"><span className="method">GET</span><h2>/api/models</h2></div><p className="modal-desc">Read-only JSON endpoint. Public, no authentication, no request body. Combine URL query parameters to search and filter. All published upstream attributes are preserved in <code>raw</code>.</p><label className="field-label">LIVE EXAMPLE</label><div className="id-copy"><code>{apiExample}</code><button onClick={()=>copy(apiExample)}><FontAwesomeIcon icon={faCopy}/> Copy</button></div><div className="api-params"><div className="api-param"><b>freeOnly</b><code>true | false</code><span>Default true; excludes explicitly paid models. Unknown-price models remain but are labeled unknown.</span></div><div className="api-param"><b>category</b><code>all | text | image | video | audio | embeddings | realtime | 3d</code><span>Default all.</span></div><div className="api-param"><b>capability</b><code>vision | reasoning | tool-calling | video-vision | ...</code><span>Default all.</span></div><div className="api-param"><b>q / search</b><code>any text</code><span>Search model ID, name, description, provider and capabilities.</span></div><div className="api-param"><b>source</b><code>community | official | all</code><span>Default community.</span></div><div className="api-param"><b>status</b><code>all | healthy | degraded | unhealthy | unknown</code><span>Catalog health filter.</span></div><div className="api-param"><b>sort</b><code>name | category | rpm | health</code><span>Default name.</span></div><div className="api-param"><b>limit / offset</b><code>1–1000 / integer ≥ 0</code><span>Pagination. Default limit 1000, offset 0.</span></div><div className="api-param"><b>includeRaw</b><code>true | false</code><span>Default true, preserves the complete upstream object.</span></div><div className="api-param"><b>refresh</b><code>true | false</code><span>Bypass the 15-second server cache when true.</span></div></div><a className="api-open" target="_blank" rel="noreferrer" href={apiExample}>Open API response <FontAwesomeIcon icon={faArrowUpRightFromSquare}/></a></div></div>}
+ </div>;
 }
-function modelId(m) { return str(get(m, "id", "name", "model")); }
-function modelTitle(m) { return str(get(m, "title", "name", "id", "model")) || "Untitled model"; }
-function modelCategory(m) { return str(get(m, "category", "type", "model_type")).toLowerCase() || "other"; }
-function capabilities(m) {
-  const c = get(m, "capabilities", "features");
-  if (Array.isArray(c)) return c.map(x => typeof x === "string" ? x : str(x?.name || x?.id)).filter(Boolean);
-  if (c && typeof c === "object") return Object.entries(c).filter(([,v]) => v === true || (v && typeof v === "object" && v.enabled !== false)).map(([k]) => k);
-  return [];
+function Stat({label,value,icon,smaller}){return <div className="stat-card"><div className="stat-card-top"><span>{label}</span><FontAwesomeIcon icon={icon}/></div><div className={'stat-value '+(smaller?'small':'')}>{value}</div><div className="stat-line"/></div>}
+function ModelCard({m,onDetails,copied,copy}){
+ const category=CATEGORIES.find(c=>c.id===m.category)||CATEGORIES[1];
+ const positive=['healthy','available','online','operational','ok'].includes(m.status);
+ return <article className="model-card"><div className="model-card-top"><div className={'model-glyph type-'+m.category}><FontAwesomeIcon icon={category.icon}/></div><div className="model-card-head"><h3 title={m.name}>{m.name}</h3><span>{m.publisher||'Community'} <span className="tiny-dot">·</span> {category.label}</span></div><span className={'availability '+(positive?'up':m.status==='unknown'?'unknown':'other')}><span/>{m.status==='unknown'?'Unverified':positive?'Active':m.status}</span></div><p className="model-description">{m.description||'Community AI model. Explore full metadata and capabilities.'}</p><div className="model-id"><code title={m.id}>{m.id}</code><button title="Copy model ID" onClick={()=>copy(m.id)} aria-label={'Copy '+m.id}><FontAwesomeIcon icon={copied===m.id?faCheck:faCopy}/></button></div><div className="capabilities">{m.capabilities.slice(0,4).map(c=><span key={c}><FontAwesomeIcon icon={capIcon(c)}/>{capLabel(c)}</span>)}{m.capabilities.length>4&&<span>+{m.capabilities.length-4}</span>}{!m.capabilities.length&&<span>Capabilities unreported</span>}</div><div className="model-metrics"><div><small>RPM LIMIT</small><strong>{m.rpm??'—'}</strong></div><div><small>CONTEXT</small><strong>{m.contextWindow?`${Math.round(m.contextWindow/1000)}K`:'—'}</strong></div><div><small>PRICING</small><strong className={m.freeStatus==='free'?'free':''}>{m.freeStatus==='free'?'Free':m.freeStatus==='paid'?'Paid':'Unknown'}</strong></div></div><div className="model-bottom"><button className="detail-btn" onClick={onDetails}>Explore model <FontAwesomeIcon icon={faArrowRight}/></button><button className="copy-card" onClick={()=>copy(m.id)}><FontAwesomeIcon icon={copied===m.id?faCheck:faCopy}/>{copied===m.id?'Copied!':'Copy ID'}</button></div></article>
 }
-function modalityList(m) {
-  return [...arr(get(m, "input_modalities", "inputModalities", "modalities", "modalities_supported")), ...arr(get(m, "output_modalities", "outputModalities"))].map(x => str(x).toLowerCase());
-}
-function numericPrices(m) {
-  const found = [];
-  const priceKey = /(price|pricing|cost|pollen)/i;
-  const walk = (obj) => {
-    if (!obj || typeof obj !== "object") return;
-    for (const [key,value] of Object.entries(obj)) {
-      if (priceKey.test(key)) {
-        if (typeof value === "number") found.push(value);
-        else if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) found.push(Number(value));
-        else if (value && typeof value === "object") walk(value);
-      } else if (value && typeof value === "object") walk(value);
-    }
-  };
-  walk(m);
-  return found;
-}
-function isFree(m) {
-  // Pollinations documents blank or zero public prices as free. paid_only is
-  // an independent restriction, so check it before examining every price field.
-  if (get(m, "paid_only", "paidOnly") === true) return false;
-  if (get(m, "is_free", "isFree", "free") === true) return true;
-  const prices = numericPrices(m);
-  return prices.every(price => price === 0);
-}
-function rpm(m) {
-  const n = get(m, "per_user_rpm", "perUserRpm", "rpm", "requests_per_minute");
-  return typeof n === "number" ? n.toLocaleString() : "Not published";
-}
-function status(m) {
-  const h = get(m, "health", "status");
-  const s = typeof h === "string" ? h : get(h, "status");
-  return str(s).toLowerCase() || "unreported";
-}
-function categoryLabel(c) {
-  return ({text:"Text & reasoning",image:"Image generation",video:"Video generation",audio:"Audio",embedding:"Embeddings","3d":"3D generation",realtime:"Realtime",decision:"Decision"}[c] || titleCase(c));
-}
-function iconForCapability(cap) {
-  const c = cap.toLowerCase();
-  if (c.includes("vision") || c.includes("image") || c.includes("visual")) return Eye;
-  if (c.includes("video") || c.includes("frame")) return Video;
-  if (c.includes("reason")) return BrainCircuit;
-  if (c.includes("tool") || c.includes("call") || c.includes("function")) return Wrench;
-  if (c.includes("search") || c.includes("web")) return Globe2;
-  if (c.includes("code")) return Code2;
-  if (c.includes("audio") || c.includes("speech") || c.includes("voice")) return AudioLines;
-  return Sparkles;
-}
-function capabilityGroups(m) {
-  const caps = capabilities(m);
-  const mods = modalityList(m);
-  const text = caps.join(" ").toLowerCase();
-  const groups = [];
-  if (mods.some(x => x.includes("image")) || /vision|image_input|image input/.test(text)) groups.push(["Vision capabilities", Eye]);
-  if (mods.some(x => x.includes("video")) || /video/.test(text)) groups.push(["Video vision capabilities", Video]);
-  if (/reason/.test(text) || get(m,"reasoning") === true) groups.push(["Reasoning capabilities", BrainCircuit]);
-  if (/tool_calling|function.?call|tool.?use/.test(text) || get(m,"tool_calling") === true) groups.push(["Calling capabilities", Wrench]);
-  if (/web_search|search/.test(text)) groups.push(["Web search", Globe2]);
-  if (/code_execution/.test(text)) groups.push(["Code execution", Code2]);
-  if (mods.some(x => x.includes("audio"))) groups.push(["Audio capabilities", AudioLines]);
-  return groups;
-}
-function App() {
-  const [models,setModels] = useState([]);
-  const [previous,setPrevious] = useState([]);
-  const [loading,setLoading] = useState(true);
-  const [refreshing,setRefreshing] = useState(false);
-  const [error,setError] = useState("");
-  const [lastUpdated,setLastUpdated] = useState(null);
-  const [query,setQuery] = useState("");
-  const [category,setCategory] = useState("all");
-  const [capFilter,setCapFilter] = useState("all");
-  const [freeOnly,setFreeOnly] = useState(true);
-  const [sort,setSort] = useState("name");
-  const [showFilters,setShowFilters] = useState(false);
-  const [selected,setSelected] = useState(null);
-  const [changeLog,setChangeLog] = useState({added:[],removed:[],changed:[]});
-  const [secondsLeft,setSecondsLeft] = useState(20);
-  const nextRefreshAt = React.useRef(Date.now() + REFRESH_MS);
-
-  const refresh = useCallback(async (manual = false) => {
-    if (manual) setRefreshing(true);
-    try {
-      const res = await fetch(API, { headers: { Accept: "application/json" }, cache: "no-store" });
-      if (!res.ok) throw new Error(`Catalog returned HTTP ${res.status}`);
-      const payload = await res.json();
-      const next = modelList(payload);
-      if (!Array.isArray(next)) throw new Error("Unexpected catalog response");
-      setModels(old => {
-        const oldMap = new Map(old.map(m => [modelId(m), JSON.stringify(m)]));
-        const nextMap = new Map(next.map(m => [modelId(m), JSON.stringify(m)]));
-        const added = next.filter(m => !oldMap.has(modelId(m)));
-        const removed = old.filter(m => !nextMap.has(modelId(m)));
-        const changed = next.filter(m => oldMap.has(modelId(m)) && oldMap.get(modelId(m)) !== nextMap.get(modelId(m)));
-        if (old.length) setChangeLog({added,removed,changed});
-        setPrevious(old);
-        return next;
-      });
-      setError("");
-      setLastUpdated(new Date());
-    } catch (e) {
-      setError(e?.message || "Unable to load the Pollinations catalog.");
-    } finally {
-      nextRefreshAt.current = Date.now() + REFRESH_MS;
-      setSecondsLeft(20);
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    const refreshId = window.setInterval(() => refresh(false), REFRESH_MS);
-    const clockId = window.setInterval(() => {
-      setSecondsLeft(Math.max(0, Math.ceil((nextRefreshAt.current - Date.now()) / 1000)));
-    }, 200);
-    return () => {
-      window.clearInterval(refreshId);
-      window.clearInterval(clockId);
-    };
-  }, [refresh]);
-
-  const freeCount = useMemo(() => models.filter(isFree).length,[models]);
-  const categories = useMemo(() => ["all",...new Set(models.map(modelCategory))].sort((a,b)=>a==="all"?-1:a.localeCompare(b)),[models]);
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    let list = models.filter(m => {
-      if (freeOnly && !isFree(m)) return false;
-      if (category !== "all" && modelCategory(m) !== category) return false;
-      if (capFilter !== "all" && !capabilityGroups(m).some(([label]) => label === capFilter)) return false;
-      if (q && ![modelTitle(m),modelId(m),get(m,"description"),get(m,"publisher"),...capabilities(m)].join(" ").toLowerCase().includes(q)) return false;
-      return true;
-    });
-    return list.sort((a,b) => sort === "rpm" ? (Number(get(b,"per_user_rpm","perUserRpm"))||-1)-(Number(get(a,"per_user_rpm","perUserRpm"))||-1) : modelTitle(a).localeCompare(modelTitle(b)));
-  },[models,freeOnly,category,capFilter,query,sort]);
-
-  const updatedText = lastUpdated ? lastUpdated.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"}) : "Waiting for first sync";
-  const selectedModel = selected ? models.find(m => modelId(m) === selected) : null;
-
-  return <div className="app-shell">
-    <div className="ambient ambient-one" /><div className="ambient ambient-two" />
-    <header className="topbar">
-      <a className="brand" href="https://pollinations.ai/" target="_blank" rel="noreferrer"><span className="brand-mark"><Sparkles size={19}/></span><span>pollinations<span className="brand-muted"> / explorer</span></span></a>
-      <div className="topbar-right"><span className="live-dot"/><span className="live-label">LIVE CATALOG</span><span className="top-separator"/><span className="sync-label"><RefreshCw size={12}/> Auto-sync · 20s</span></div>
-    </header>
-
-    <main className="main">
-      <section className="hero">
-        <div className="eyebrow"><span className="eyebrow-line"/> COMMUNITY COLLECTION <span className="eyebrow-line"/></div>
-        <h1>Find your next<br/><span>AI model.</span></h1>
-        <p className="hero-copy">A live directory of community-built models on Pollinations.<br className="desktop-break"/> Explore capabilities, limits and metadata in one place.</p>
-        <div className="hero-stats">
-          <div><strong>{loading ? "—" : freeCount.toLocaleString()}</strong><span>FREE MODELS</span></div>
-          <i/>
-          <div><strong>{loading ? "—" : models.length.toLocaleString()}</strong><span>COMMUNITY MODELS</span></div>
-          <i/>
-          <div><strong>20s</strong><span>REFRESH RATE</span></div>
-        </div>
-      </section>
-
-      <section className="catalog-section">
-        <div className="section-heading"><div><div className="section-kicker">THE DIRECTORY</div><h2>Community models <span className="count-pill">{filtered.length}</span></h2></div>
-          <button className="refresh-button" onClick={()=>refresh(true)} disabled={refreshing}><RefreshCw size={15} className={refreshing?"spin":""}/>{refreshing?"Refreshing":"Manual refresh"}</button>
-        </div>
-
-        <div className="toolbar">
-          <div className="searchbox"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search models, publishers, capabilities…"/>{query && <button onClick={()=>setQuery("")} aria-label="Clear search"><X size={15}/></button>}<kbd>⌘ K</kbd></div>
-          <button className={showFilters?"filter-button active":"filter-button"} onClick={()=>setShowFilters(v=>!v)}><SlidersHorizontal size={16}/> Filters <ChevronDown size={14}/></button>
-        </div>
-
-        {showFilters && <div className="filter-panel">
-          <label className="toggle-row"><span><strong>Free models only</strong><small>Blank or zero public prices; paid-only models excluded</small></span><button role="switch" aria-checked={freeOnly} className={freeOnly?"switch on":"switch"} onClick={()=>setFreeOnly(v=>!v)}><span/></button></label>
-          <label className="select-label">SORT BY<select value={sort} onChange={e=>setSort(e.target.value)}><option value="name">Model name</option><option value="rpm">Highest RPM first</option></select></label>
-          <label className="select-label">CAPABILITY<select value={capFilter} onChange={e=>setCapFilter(e.target.value)}><option value="all">All capabilities</option>{["Vision capabilities","Video vision capabilities","Reasoning capabilities","Calling capabilities","Web search","Code execution","Audio capabilities"].map(x=><option key={x}>{x}</option>)}</select></label>
-        </div>}
-
-        <div className="category-row">
-          {categories.map(c=><button key={c} onClick={()=>setCategory(c)} className={category===c?"category-chip selected":"category-chip"}>{c==="all"?"All models":categoryLabel(c)}</button>)}
-        </div>
-
-        <div className="catalog-meta"><span>{loading?"SYNCING CATALOG":`SHOWING ${filtered.length} OF ${models.length} MODELS`}</span><span className="updated"><span className="tiny-live"/> Last updated {updatedText}</span></div>
-        {error && <div className="error-banner"><CircleHelp size={16}/><span>{error} <button onClick={()=>refresh(true)}>Try again</button></span></div>}
-        {changeLog.added.length+changeLog.removed.length+changeLog.changed.length>0 && <div className="change-banner"><Activity size={15}/><span>Catalog changes detected: {changeLog.added.length} added · {changeLog.removed.length} removed · {changeLog.changed.length} updated</span><button onClick={()=>setChangeLog({added:[],removed:[],changed:[]})}>Dismiss</button></div>}
-
-        {loading ? <div className="loading-grid">{[1,2,3,4,5,6].map(x=><div className="skeleton" key={x}/>)}</div> :
-          filtered.length ? <div className="model-grid">{filtered.map(m=><ModelCard key={modelId(m)} model={m} onClick={()=>setSelected(modelId(m))}/>)}</div> :
-          <div className="empty-state"><Layers3 size={30}/><h3>No models found</h3><p>Try changing your search or filters.</p><button onClick={()=>{setQuery("");setCategory("all");setCapFilter("all");setFreeOnly(false)}}>Clear filters</button></div>}
-      </section>
-
-      <footer className="footer"><div className="footer-brand"><span className="brand-mark small"><Sparkles size={14}/></span><span>COMMUNITY MODEL EXPLORER</span></div><p>Made by <a href="https://guns.lol/nosleepytimee" target="_blank" rel="noreferrer">3fow <ArrowUpRight size={12}/></a></p><p>This website is not associated with Pollinations.ai.</p><p><a href="https://pollinations.ai/" target="_blank" rel="noreferrer">Official Pollinations website <ExternalLink size={11}/></a></p><small>© {new Date().getFullYear()} 3fow. All rights reserved.</small></footer>
-    </main>
-
-    <a className="floating-source" href="https://enter.pollinations.ai/models?q=source:community" target="_blank" rel="noreferrer"><span className="source-spark">✳</span> Models from Pollinations.ai <ExternalLink size={13}/></a>
-    <div className="refresh-countdown" aria-live="off" title="Time until the next automatic catalog refresh">
-      <span className="countdown-pulse"/><span className="countdown-number" key={secondsLeft}>{secondsLeft}</span><span className="countdown-unit">{secondsLeft === 1 ? "sec" : "secs"}</span>
-      <span className="countdown-label">UNTIL REFRESH</span>
-    </div>
-    {selectedModel && <ModelModal model={selectedModel} onClose={()=>setSelected(null)}/>}
-  </div>;
-}
-
-function ModelCard({model:m,onClick}) {
-  const caps=capabilities(m), groups=capabilityGroups(m), category=modelCategory(m);
-  const desc=str(get(m,"description","summary")) || "No description has been published for this model.";
-  const health=status(m);
-  const price=numericPrices(m);
-  return <div className="model-card" role="button" tabIndex={0} onClick={onClick} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onClick();}}}>
-    <div className="card-top"><span className="model-type"><span className="type-icon"><Layers3 size={13}/></span>{categoryLabel(category)}</span><span className={health==="healthy"||health==="operational"?"health healthy":"health"}><i/>{titleCase(health)}</span></div>
-    <div className="model-name-row"><h3>{modelTitle(m)}</h3><ArrowUpRight size={16}/></div>
-    <div className="model-id-row"><code className="model-id">{modelId(m)}</code><CopyIdButton value={modelId(m)}/></div>
-    <p className="model-description">{desc}</p>
-    <div className="capability-tags">{groups.slice(0,3).map(([label,Icon])=><span key={label}><Icon size={12}/>{label}</span>)}{caps.length>0&&!groups.length&&caps.slice(0,2).map(c=><span key={c}><Sparkles size={12}/>{titleCase(c)}</span>)}{!groups.length&&!caps.length&&<span className="muted-tag">No capabilities listed</span>}</div>
-    <div className="card-divider"/>
-    <div className="card-stats"><div><span>REQUESTS / MIN</span><strong>{rpm(m)}</strong></div><div><span>PRICING</span><strong className={isFree(m)?"free-text":""}>{isFree(m)?"Free":price.length?"Paid / mixed":"Not published"}</strong></div><div><span>CONTEXT</span><strong>{get(m,"context_length","contextLength") ? Number(get(m,"context_length","contextLength")).toLocaleString() : "—"}</strong></div></div>
-  </div>;
-}
-
-function CopyIdButton({value}) {
-  const [copied,setCopied]=useState(false);
-  const copy=async e=>{
-    e?.stopPropagation?.();
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      window.setTimeout(()=>setCopied(false),1600);
-    } catch {
-      const field=document.createElement("textarea");
-      field.value=value;document.body.appendChild(field);field.select();
-      const ok=document.execCommand("copy");field.remove();
-      if(ok){setCopied(true);window.setTimeout(()=>setCopied(false),1600);}
-    }
-  };
-  return <button type="button" className={copied?"copy-id-button copied":"copy-id-button"} onClick={copy} aria-label={copied?"Model ID copied":"Copy model ID"} title={copied?"Copied!":"Copy model ID"}>{copied?<Check size={14}/>:<Copy size={14}/>}<span>{copied?"Copied":"Copy ID"}</span></button>;
-}
-
-function ModelModal({model:m,onClose}) {
-  const caps=capabilities(m), mods=modalityList(m), groups=capabilityGroups(m);
-  const details=[
-    ["Model ID",modelId(m)],["Publisher",get(m,"publisher","owner")||"Not published"],["Category",categoryLabel(modelCategory(m))],["Requests per minute",rpm(m)],["Context length",get(m,"context_length","contextLength")?.toLocaleString?.()||"Not published"],["Pricing",isFree(m)?"Free (zero-priced)":numericPrices(m).length?"Pricing applies":"Not published"],["Health",titleCase(status(m))],["Streaming",get(m,"supports_streaming","streaming")===true?"Supported":get(m,"supports_streaming","streaming")===false?"Not supported":"Not published"]
-  ];
-  useEffect(()=>{const fn=e=>{if(e.key==="Escape")onClose()};window.addEventListener("keydown",fn);return()=>window.removeEventListener("keydown",fn)},[onClose]);
-  return <div className="modal-backdrop" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><section className="modal">
-    <div className="modal-head"><div><div className="section-kicker">MODEL DETAILS</div><h2>{modelTitle(m)}</h2><div className="modal-id-row"><code>{modelId(m)}</code><CopyIdButton value={modelId(m)}/></div></div><button className="close-button" onClick={onClose}><X size={18}/></button></div>
-    <p className="modal-description">{get(m,"description","summary")||"No description has been published."}</p>
-    <div className="details-grid">{details.map(([k,v])=><div className="detail-cell" key={k}><span>{k}</span><strong>{String(v)}</strong></div>)}</div>
-    <div className="modal-block"><h4>CAPABILITIES</h4><div className="modal-tags">{caps.length?caps.map(c=>{const Icon=iconForCapability(c);return <span key={c}><Icon size={14}/>{titleCase(c)}</span>}):<em>Not published</em>}</div></div>
-    <div className="modal-block"><h4>MODALITIES</h4><div className="modal-tags">{mods.length?mods.map(x=><span key={x}>{titleCase(x)}</span>):<em>Not published</em>}</div></div>
-    <div className="modal-block"><h4>SUPPORTED ENDPOINTS</h4><div className="modal-tags">{arr(get(m,"supported_endpoints","endpoints")).length?arr(get(m,"supported_endpoints","endpoints")).map(x=><span key={str(x)}>{str(x)}</span>):<em>Not published</em>}</div></div>
-    <div className="modal-note"><CircleHelp size={15}/> Limits and capabilities are shown only when Pollinations publishes them. “Not published” does not mean unsupported.</div>
-    <a className="modal-link" href="https://enter.pollinations.ai/models?q=source:community" target="_blank" rel="noreferrer">Open Pollinations model catalog <ExternalLink size={14}/></a>
-  </section></div>;
-}
-
-createRoot(document.getElementById("root")).render(<App/>);
+function Info({label,value}){return <div className="info-cell"><small>{label}</small><strong>{value}</strong></div>}
+createRoot(document.getElementById('root')).render(<App/>);
